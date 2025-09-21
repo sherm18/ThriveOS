@@ -1,12 +1,13 @@
 {
   "expo": {
-    "name": "MyFirstApp",
-    "slug": "MyFirstApp",
+    "name": "Sleep Quest",
+    "slug": "sleep-quest",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myfirstapp",
+    "scheme": "sleepquest",
     "userInterfaceStyle": "automatic",
+    "description": "Level up your sleep game! Track sleep patterns, earn achievement badges, and compete with friends.",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
@@ -23,7 +24,22 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "bundler": "metro",
+      "name": "Sleep Quest",
+      "shortName": "Sleep Quest",
+      "lang": "en",
+      "scope": "/",
+      "themeColor": "#8b5cf6",
+      "backgroundColor": "#1e1b4b",
+      "display": "standalone",
+      "orientation": "portrait-primary",
+      "startUrl": "/",
+      "splash": {
+        "image": "./assets/images/splash-icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#1e1b4b"
+      }
     },
     "plugins": [
       "expo-router",
