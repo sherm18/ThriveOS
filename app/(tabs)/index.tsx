@@ -1,9 +1,11 @@
-import { History, Moon, Trophy, BarChart3, Plus } from 'lucide-react';
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { History, Moon, Trophy, BarChart3, Plus, Award } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert } from 'react-native';
 import ProgressCharts from '@/components/progress-charts';
 import SleepHistory from '@/components/sleep-history';
 import SleepEntryForm from '@/components/sleep-entry-form';
+import BadgeCollection from '@/components/badge-collection';
+import { calculateBadges, Badge } from '@/components/badge-system';
 
 interface SleepEntry {
   id: string;
@@ -18,10 +20,11 @@ interface SleepEntry {
 
 export default function SleepGameApp() {
   const [sleepEntries, setSleepEntries] = useState<SleepEntry[]>([]);
-  const [currentTab, setCurrentTab] = useState<'sleep' | 'friends' | 'progress' | 'history'>('sleep');
+  const [currentTab, setCurrentTab] = useState<'sleep' | 'friends' | 'progress' | 'history' | 'badges'>('sleep');
   const [showEntryForm, setShowEntryForm] = useState(false);
   const [editingEntry, setEditingEntry] = useState<SleepEntry | null>(null);
   const [streak] = useState(3);
+  const [badges, setBadges] = useState<Badge[]>([]);
 
   // Calculate latest sleep score and average for friends leaderboard
   const latestEntry = sleepEntries.length > 0 ?
@@ -29,6 +32,38 @@ export default function SleepGameApp() {
 
   const averageScore = sleepEntries.length > 0 ?
     Math.round(sleepEntries.reduce((sum, entry) => sum + entry.score, 0) / sleepEntries.length) : 0;
+
+  // Calculate badges whenever sleep entries change
+  useEffect(() => {
+    const updatedBadges = calculateBadges(sleepEntries);
+
+    // Check for newly earned badges
+    const earnedBadges = updatedBadges.filter(badge => badge.isEarned);
+    const previouslyEarnedBadges = badges.filter(badge => badge.isEarned);
+
+    const newlyEarnedBadges = earnedBadges.filter(newBadge =>
+      !previouslyEarnedBadges.some(oldBadge => oldBadge.id === newBadge.id)
+    );
+
+    if (newlyEarnedBadges.length > 0) {
+      // Show notification for first newly earned badge
+      setTimeout(() => {
+        Alert.alert(
+          '🎉 Badge Earned!',
+          `Congratulations! You earned the "${newlyEarnedBadges[0].name}" badge!\n\n${newlyEarnedBadges[0].description}`,
+          [
+            { text: 'View Collection', onPress: () => setCurrentTab('badges') },
+            { text: 'Continue', style: 'default' }
+          ]
+        );
+      }, 500);
+    }
+
+    setBadges(updatedBadges);
+  }, [sleepEntries, badges]);
+
+  // Calculate earned badges count for display
+  const earnedBadgesCount = badges.filter(badge => badge.isEarned).length;
 
   // Mock friends data with real user data
   const friends = [
@@ -122,28 +157,40 @@ export default function SleepGameApp() {
             style={[styles.tab, currentTab === 'sleep' && styles.tabActive]}
             onPress={() => setCurrentTab('sleep')}
           >
-            <Moon size={16} color={currentTab === 'sleep' ? "#ffffff" : "#c4b5fd"} />
+            <Moon size={14} color={currentTab === 'sleep' ? "#ffffff" : "#c4b5fd"} />
             <Text style={[styles.tabText, currentTab === 'sleep' && styles.tabTextActive]}>Sleep</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tab, currentTab === 'history' && styles.tabActive]}
             onPress={() => setCurrentTab('history')}
           >
-            <History size={16} color={currentTab === 'history' ? "#ffffff" : "#c4b5fd"} />
+            <History size={14} color={currentTab === 'history' ? "#ffffff" : "#c4b5fd"} />
             <Text style={[styles.tabText, currentTab === 'history' && styles.tabTextActive]}>History</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, currentTab === 'badges' && styles.tabActive]}
+            onPress={() => setCurrentTab('badges')}
+          >
+            <Award size={14} color={currentTab === 'badges' ? "#ffffff" : "#c4b5fd"} />
+            <Text style={[styles.tabText, currentTab === 'badges' && styles.tabTextActive]}>Badges</Text>
+            {earnedBadgesCount > 0 && (
+              <View style={styles.badgeCount}>
+                <Text style={styles.badgeCountText}>{earnedBadgesCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tab, currentTab === 'progress' && styles.tabActive]}
             onPress={() => setCurrentTab('progress')}
           >
-            <BarChart3 size={16} color={currentTab === 'progress' ? "#ffffff" : "#c4b5fd"} />
-            <Text style={[styles.tabText, currentTab === 'progress' && styles.tabTextActive]}>Progress</Text>
+            <BarChart3 size={14} color={currentTab === 'progress' ? "#ffffff" : "#c4b5fd"} />
+            <Text style={[styles.tabText, currentTab === 'progress' && styles.tabTextActive]}>Charts</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tab, currentTab === 'friends' && styles.tabActive]}
             onPress={() => setCurrentTab('friends')}
           >
-            <Trophy size={16} color={currentTab === 'friends' ? "#ffffff" : "#c4b5fd"} />
+            <Trophy size={14} color={currentTab === 'friends' ? "#ffffff" : "#c4b5fd"} />
             <Text style={[styles.tabText, currentTab === 'friends' && styles.tabTextActive]}>Friends</Text>
           </TouchableOpacity>
         </View>
@@ -212,6 +259,36 @@ export default function SleepGameApp() {
               </View>
             )}
 
+            {/* Recent Badges */}
+            {earnedBadgesCount > 0 && (
+              <View style={styles.recentBadgesCard}>
+                <Text style={styles.recentBadgesTitle}>🏆 Recent Badges ({earnedBadgesCount})</Text>
+                <View style={styles.badgeRow}>
+                  {badges
+                    .filter(badge => badge.isEarned)
+                    .slice(0, 3)
+                    .map((badge) => (
+                      <TouchableOpacity
+                        key={badge.id}
+                        style={styles.miniBadge}
+                        onPress={() => setCurrentTab('badges')}
+                      >
+                        <Text style={styles.miniBadgeEmoji}>{badge.icon}</Text>
+                        <Text style={styles.miniBadgeName}>{badge.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  {earnedBadgesCount > 3 && (
+                    <TouchableOpacity
+                      style={styles.moreBadges}
+                      onPress={() => setCurrentTab('badges')}
+                    >
+                      <Text style={styles.moreBadgesText}>+{earnedBadgesCount - 3}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            )}
+
             {sleepEntries.length === 0 && (
               <View style={styles.emptyState}>
                 <Moon size={64} color="#c4b5fd" />
@@ -230,6 +307,9 @@ export default function SleepGameApp() {
             onDeleteEntry={handleDeleteEntry}
             onAddNew={handleAddNew}
           />
+        ) : currentTab === 'badges' ? (
+          // Badge Collection View
+          <BadgeCollection badges={badges} />
         ) : currentTab === 'progress' ? (
           // Progress Charts View
           <ProgressCharts sleepEntries={sleepEntries} />
@@ -818,5 +898,76 @@ const styles = StyleSheet.create({
     color: '#c4b5fd',
     textAlign: 'center',
     lineHeight: 24,
+  },
+  badgeCount: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#1e1b4b',
+  },
+  badgeCountText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  recentBadgesCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  recentBadgesTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#ffffff',
+    marginBottom: 16,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  miniBadge: {
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    minWidth: 80,
+  },
+  miniBadgeEmoji: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  miniBadgeName: {
+    fontSize: 10,
+    color: '#c4b5fd',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  moreBadges: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 50,
+    height: 50,
+    backgroundColor: 'rgba(139, 92, 246, 0.3)',
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: '#8b5cf6',
+  },
+  moreBadgesText: {
+    fontSize: 14,
+    color: '#8b5cf6',
+    fontWeight: 'bold',
   },
 });
