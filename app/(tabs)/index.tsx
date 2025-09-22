@@ -1,32 +1,55 @@
-import { History, Moon, Trophy, BarChart3, Plus, Award } from 'lucide-react';
+import { History, Moon, Trophy, BarChart3, Plus, Award, User, Settings } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert, ActivityIndicator } from 'react-native';
 import ProgressCharts from '@/components/progress-charts';
 import SleepHistory from '@/components/sleep-history';
 import SleepEntryForm from '@/components/sleep-entry-form';
 import BadgeCollection from '@/components/badge-collection';
 import { calculateBadges, Badge } from '@/components/badge-system';
-
-interface SleepEntry {
-  id: string;
-  date: string;
-  bedtime: string;
-  waketime: string;
-  quality: number;
-  feeling: string;
-  score: number;
-  duration: number;
-}
+import { AuthScreen } from '@/components/AuthScreen';
+import { UserProfile } from '@/components/UserProfile';
+import { FriendsManager } from '@/components/FriendsManager';
+import { useAuth } from '@/contexts/MockAuthContext';
+import { SleepService } from '@/services/mockSleepService';
+import { SleepEntry } from '@/types/sleep';
 
 export default function SleepGameApp() {
+  const { user, loading: authLoading } = useAuth();
   const [sleepEntries, setSleepEntries] = useState<SleepEntry[]>([]);
-  const [currentTab, setCurrentTab] = useState<'sleep' | 'friends' | 'progress' | 'history' | 'badges'>('sleep');
+  const [currentTab, setCurrentTab] = useState<'sleep' | 'friends' | 'progress' | 'history' | 'badges' | 'profile'>('sleep');
   const [showEntryForm, setShowEntryForm] = useState(false);
   const [editingEntry, setEditingEntry] = useState<SleepEntry | null>(null);
-  const [streak] = useState(3);
   const [badges, setBadges] = useState<Badge[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // Calculate latest sleep score and average for friends leaderboard
+  // Load user's sleep entries when user is authenticated
+  useEffect(() => {
+    if (user) {
+      loadSleepEntries();
+    } else {
+      setSleepEntries([]);
+      setBadges([]);
+    }
+  }, [user]);
+
+  const loadSleepEntries = async () => {
+    if (!user) return;
+
+    setLoading(true);
+    try {
+      const entries = await SleepService.getUserSleepEntries(user.id);
+      setSleepEntries(entries);
+
+      // Update user sleep stats
+      await SleepService.updateUserSleepStats(user.id, entries);
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Calculate latest sleep score and average
   const latestEntry = sleepEntries.length > 0 ?
     sleepEntries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0] : null;
 
@@ -65,47 +88,45 @@ export default function SleepGameApp() {
   // Calculate earned badges count for display
   const earnedBadgesCount = badges.filter(badge => badge.isEarned).length;
 
-  // Mock friends data with real user data
-  const friends = [
-    { id: 1, name: 'Sarah', score: 87, streak: 5, lastSleep: '8.2 hrs', avatar: '👩' },
-    { id: 2, name: 'Mike', score: 72, streak: 2, lastSleep: '6.8 hrs', avatar: '👨' },
-    { id: 3, name: 'Emma', score: 91, streak: 8, lastSleep: '8.5 hrs', avatar: '👱‍♀️' },
-    { id: 4, name: 'Alex', score: 65, streak: 1, lastSleep: '5.9 hrs', avatar: '🧑' },
-    {
-      id: 5,
-      name: 'You',
-      score: latestEntry?.score || 0,
-      streak: streak,
-      lastSleep: latestEntry ? `${latestEntry.duration.toFixed(1)} hrs` : '0 hrs',
-      avatar: '🌟'
-    },
-  ];
+  // Show loading screen during auth check
+  if (authLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#8b5cf6" />
+        <Text style={styles.loadingText}>Loading Sleep Quest...</Text>
+      </View>
+    );
+  }
 
-  // Sort friends by score for leaderboard
-  const leaderboard = [...friends].sort((a, b) => b.score - a.score);
-  const yourRank = leaderboard.findIndex(friend => friend.name === 'You') + 1;
+  // Show auth screen if not authenticated
+  if (!user) {
+    return <AuthScreen />;
+  }
 
-  // Sleep entry management functions
-  const handleSaveEntry = (entryData: Omit<SleepEntry, 'id'>) => {
-    if (editingEntry) {
-      // Update existing entry
-      setSleepEntries(entries =>
-        entries.map(entry =>
-          entry.id === editingEntry.id
-            ? { ...entryData, id: editingEntry.id }
-            : entry
-        )
-      );
-    } else {
-      // Add new entry
-      const newEntry: SleepEntry = {
-        ...entryData,
-        id: Date.now().toString()
-      };
-      setSleepEntries(entries => [...entries, newEntry]);
+  // Sleep entry management functions with Firebase integration
+  const handleSaveEntry = async (entryData: Omit<SleepEntry, 'id' | 'userId' | 'createdAt' | 'updatedAt'>) => {
+    if (!user) return;
+
+    setLoading(true);
+    try {
+      if (editingEntry) {
+        // Update existing entry
+        await SleepService.updateSleepEntry(editingEntry.id, entryData);
+      } else {
+        // Add new entry
+        await SleepService.addSleepEntry(user.id, entryData);
+      }
+
+      // Reload entries
+      await loadSleepEntries();
+
+      setShowEntryForm(false);
+      setEditingEntry(null);
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setLoading(false);
     }
-    setShowEntryForm(false);
-    setEditingEntry(null);
   };
 
   const handleEditEntry = (entry: SleepEntry) => {
@@ -113,8 +134,31 @@ export default function SleepGameApp() {
     setShowEntryForm(true);
   };
 
-  const handleDeleteEntry = (id: string) => {
-    setSleepEntries(entries => entries.filter(entry => entry.id !== id));
+  const handleDeleteEntry = async (id: string) => {
+    if (!user) return;
+
+    Alert.alert(
+      'Delete Entry',
+      'Are you sure you want to delete this sleep entry?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setLoading(true);
+            try {
+              await SleepService.deleteSleepEntry(id);
+              await loadSleepEntries();
+            } catch (error: any) {
+              Alert.alert('Error', error.message);
+            } finally {
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleAddNew = () => {
@@ -144,11 +188,21 @@ export default function SleepGameApp() {
 
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.iconContainer}>
-            <Moon size={48} color="#c4b5fd" />
+          <View style={styles.headerMain}>
+            <View style={styles.iconContainer}>
+              <Moon size={48} color="#c4b5fd" />
+            </View>
+            <View style={styles.headerText}>
+              <Text style={styles.title}>Sleep Quest</Text>
+              <Text style={styles.subtitle}>Welcome back, {user.displayName}!</Text>
+            </View>
           </View>
-          <Text style={styles.title}>Sleep Quest</Text>
-          <Text style={styles.subtitle}>Level up your sleep game!</Text>
+          <TouchableOpacity
+            style={styles.profileButton}
+            onPress={() => setCurrentTab('profile')}
+          >
+            <User size={24} color="#c4b5fd" />
+          </TouchableOpacity>
         </View>
 
         {/* Navigation Tabs */}
@@ -211,7 +265,7 @@ export default function SleepGameApp() {
                   <Text style={styles.statLabel}>Avg Score</Text>
                 </View>
                 <View style={styles.statItem}>
-                  <Text style={styles.statValue}>{streak}</Text>
+                  <Text style={styles.statValue}>{user.sleepStats.currentStreak}</Text>
                   <Text style={styles.statLabel}>Day Streak</Text>
                 </View>
                 <View style={styles.statItem}>
@@ -314,82 +368,11 @@ export default function SleepGameApp() {
           // Progress Charts View
           <ProgressCharts sleepEntries={sleepEntries} />
         ) : currentTab === 'friends' ? (
-          // Friends & Leaderboard View
-          <View>
-            {/* Your Rank Card */}
-            <View style={styles.rankCard}>
-              <View style={styles.rankContent}>
-                <Text style={styles.rankTitle}>Your Ranking</Text>
-                <View style={styles.rankDisplay}>
-                  <Text style={styles.rankNumber}>#{yourRank}</Text>
-                  <Text style={styles.rankSubtitle}>out of {friends.length} friends</Text>
-                </View>
-                {yourRank <= 3 && (
-                  <Text style={styles.rankBadge}>
-                    {yourRank === 1 ? '🥇 Sleep Champion!' : 
-                     yourRank === 2 ? '🥈 Great Sleeper!' : '🥉 Top Performer!'}
-                  </Text>
-                )}
-              </View>
-            </View>
-
-            {/* Leaderboard */}
-            <View style={styles.leaderboardCard}>
-              <Text style={styles.leaderboardTitle}>🏆 Sleep Leaderboard</Text>
-              {leaderboard.map((friend, index) => (
-                <View key={friend.id} style={[
-                  styles.friendRow,
-                  friend.name === 'You' && styles.friendRowHighlight
-                ]}>
-                  <View style={styles.friendRank}>
-                    <Text style={[
-                      styles.friendRankText,
-                      index < 3 && styles.topRankText
-                    ]}>
-                      {index + 1}
-                    </Text>
-                  </View>
-                  
-                  <Text style={styles.friendAvatar}>{friend.avatar}</Text>
-                  
-                  <View style={styles.friendInfo}>
-                    <Text style={[
-                      styles.friendName,
-                      friend.name === 'You' && styles.friendNameHighlight
-                    ]}>
-                      {friend.name}
-                    </Text>
-                    <Text style={styles.friendDetails}>
-                      {friend.lastSleep} • {friend.streak} day streak
-                    </Text>
-                  </View>
-                  
-                  <View style={styles.friendScore}>
-                    <Text style={[
-                      styles.friendScoreText,
-                      {color: friend.score >= 80 ? '#10b981' : 
-                              friend.score >= 60 ? '#f59e0b' : '#ef4444'}
-                    ]}>
-                      {friend.score}
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-
-            {/* Friend Challenges */}
-            <View style={styles.challengeCard}>
-              <Text style={styles.challengeTitle}>🎯 Weekly Challenges</Text>
-              <View style={styles.challenge}>
-                <Text style={styles.challengeText}>Beat Sarah&apos;s 5-day streak</Text>
-                <Text style={styles.challengeProgress}>3/6 days</Text>
-              </View>
-              <View style={styles.challenge}>
-                <Text style={styles.challengeText}>Get 80+ score 3 times this week</Text>
-                <Text style={styles.challengeProgress}>1/3 completed</Text>
-              </View>
-            </View>
-          </View>
+          // Friends Manager View
+          <FriendsManager />
+        ) : currentTab === 'profile' ? (
+          // User Profile View
+          <UserProfile />
         ) : null}
 
       </View>
@@ -406,12 +389,38 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingTop: 50,
   },
-  header: {
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#0f0f23',
+  },
+  loadingText: {
+    color: '#ffffff',
+    fontSize: 16,
+    marginTop: 16,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 32,
   },
+  headerMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  headerText: {
+    marginLeft: 16,
+  },
+  profileButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
   iconContainer: {
-    marginBottom: 16,
+    marginBottom: 0,
   },
   title: {
     fontSize: 32,

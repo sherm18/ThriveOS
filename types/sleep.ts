@@ -1,5 +1,6 @@
 export interface SleepEntry {
   id: string;
+  userId: string;
   date: string;
   bedtime: string;
   waketime: string;
@@ -7,4 +8,6 @@ export interface SleepEntry {
   feeling: string;
   score: number;
   duration: number;
+  createdAt: string;
+  updatedAt: string;
 }
